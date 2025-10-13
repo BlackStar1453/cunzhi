@@ -933,25 +933,33 @@ onMounted(() => {
       </n-radio-group>
 
       <!-- 使用已有 Bot -->
-      <div v-if="configureForm.useExistingBot">
-        <n-form label-placement="left" label-width="100">
+      <template v-if="configureForm.useExistingBot">
+        <n-alert v-if="telegramConfig.bots.length === 0" type="warning">
+          暂无可用的 Bot，请先在"Bot 管理"中添加 Bot
+        </n-alert>
+        <n-form v-else label-placement="left" label-width="100">
           <n-form-item label="选择 Bot">
             <n-select
               v-model:value="configureForm.selectedBotName"
               :options="telegramConfig.bots.map(b => ({ label: b.name, value: b.name }))"
               placeholder="请选择一个 Bot"
+              clearable
             />
           </n-form-item>
-        </n-form>
 
-        <!-- 调试信息 -->
-        <n-alert v-if="telegramConfig.bots.length === 0" type="warning" class="mt-2">
-          暂无可用的 Bot，请先在"Bot 管理"中添加 Bot
-        </n-alert>
-        <div v-else class="text-xs opacity-60 mt-2">
-          可用 Bot: {{ telegramConfig.bots.map(b => b.name).join(', ') }}
-        </div>
-      </div>
+          <!-- 显示选中的 Bot 信息 -->
+          <template v-if="configureForm.selectedBotName">
+            <n-alert type="info" class="mt-2">
+              <div class="text-sm">
+                <div class="font-medium mb-1">已选择 Bot: {{ configureForm.selectedBotName }}</div>
+                <div class="opacity-80 text-xs">
+                  该会话的消息将发送到此 Bot
+                </div>
+              </div>
+            </n-alert>
+          </template>
+        </n-form>
+      </template>
 
       <!-- 创建新 Bot -->
       <div v-else>
