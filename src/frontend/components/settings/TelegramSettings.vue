@@ -108,13 +108,13 @@ async function saveTelegramConfig() {
 
 // 切换启用状态
 async function toggleTelegramEnabled() {
-  telegramConfig.value.enabled = !telegramConfig.value.enabled
+  // v-model 已经自动更新了值，这里只需要保存
   await saveTelegramConfig()
 }
 
 // 切换隐藏前端弹窗
 async function toggleHideFrontendPopup() {
-  telegramConfig.value.hide_frontend_popup = !telegramConfig.value.hide_frontend_popup
+  // v-model 已经自动更新了值，这里只需要保存
   await saveTelegramConfig()
 }
 

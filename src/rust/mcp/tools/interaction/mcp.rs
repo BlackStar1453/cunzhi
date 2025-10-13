@@ -16,9 +16,10 @@ impl InteractionTool {
         request: ZhiRequest,
     ) -> Result<CallToolResult, McpError> {
         use crate::log_debug;
+        use crate::log_important;
 
         // 尝试获取会话 ID（工作目录）
-        // 优先级：working_directory 参数 > CUNZHI_SESSION_ID > PWD > current_dir
+        // 优先级：working_directory 参数 > CUNZHI_SESSION_ID > PWD > current_dir > 生成唯一ID
         let session_id = request.working_directory
             .clone()
             .or_else(|| std::env::var("CUNZHI_SESSION_ID").ok())
@@ -27,9 +28,24 @@ impl InteractionTool {
                 std::env::current_dir()
                     .ok()
                     .and_then(|path| path.to_str().map(|s| s.to_string()))
+            })
+            .or_else(|| {
+                // 如果无法获取工作目录，生成一个基于时间戳的唯一会话ID
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .ok()?
+                    .as_secs();
+                let random_suffix = std::process::id(); // 使用进程ID作为随机后缀
+                Some(format!("session_{}_pid_{}", timestamp, random_suffix))
             });
 
         log_debug!("检测到的 session_id: {:?}", session_id);
+        if let Some(ref sid) = session_id {
+            if sid.starts_with("session_") {
+                log_important!(info, "使用生成的会话ID: {}", sid);
+            }
+        }
 
         let popup_request = PopupRequest {
             id: generate_request_id(),
