@@ -82,8 +82,12 @@ export function useMcpHandler() {
           message: request.message,
           predefinedOptions: request.predefined_options || [],
           isMarkdown: request.is_markdown || false,
+          botName: request.bot_name || null,
+          sessionId: request.session_id || null,
         })
         console.log('✅ Telegram同步启动成功')
+        console.log('  - session_id:', request.session_id)
+        console.log('  - bot_name:', request.bot_name)
       }
     }
     catch (error) {

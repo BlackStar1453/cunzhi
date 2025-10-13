@@ -219,7 +219,8 @@ pub async fn start_telegram_sync(
     message: String,
     predefined_options: Vec<String>,
     is_markdown: bool,
-    bot_name: Option<String>, // 新增：可选的 bot 名称
+    bot_name: Option<String>, // 可选的 bot 名称
+    session_id: Option<String>, // 新增：可选的 session_id
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
@@ -234,11 +235,18 @@ pub async fn start_telegram_sync(
             return Ok(());
         }
 
-        // 根据 bot_name 获取对应的 bot 配置
+        // 根据 bot_name 或 session_id 获取对应的 bot 配置
+        // 优先级：bot_name > session_id 映射 > 默认 bot
         let bot = if let Some(name) = &bot_name {
+            // 1. 如果明确指定了 bot_name，使用指定的 bot
             config.telegram_config.get_bot(name)
                 .ok_or_else(|| format!("Bot '{}' 不存在", name))?
+        } else if let Some(sid) = &session_id {
+            // 2. 如果提供了 session_id，尝试从映射中获取对应的 bot
+            config.telegram_config.get_bot_for_session(Some(sid))
+                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?
         } else {
+            // 3. 否则使用默认 bot
             config.telegram_config.get_default_bot()
                 .ok_or_else(|| "没有可用的 Bot 配置".to_string())?
         };
