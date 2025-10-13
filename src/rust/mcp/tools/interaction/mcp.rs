@@ -40,8 +40,11 @@ impl InteractionTool {
                 Some(format!("session_{}_pid_{}", timestamp, random_suffix))
             });
 
-        log_debug!("检测到的 session_id: {:?}", session_id);
+        // 调试信息
         log_important!(info, "🔍 working_directory 参数: {:?}", request.working_directory);
+        log_important!(info, "🔍 CUNZHI_SESSION_ID 环境变量: {:?}", std::env::var("CUNZHI_SESSION_ID").ok());
+        log_important!(info, "🔍 PWD 环境变量: {:?}", std::env::var("PWD").ok());
+        log_important!(info, "🔍 current_dir(): {:?}", std::env::current_dir().ok());
         log_important!(info, "🔍 最终 session_id: {:?}", session_id);
 
         if let Some(ref sid) = session_id {
