@@ -1,7 +1,7 @@
 use chrono;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ZhiRequest {
     #[schemars(description = "要显示给用户的消息")]
     pub message: String,

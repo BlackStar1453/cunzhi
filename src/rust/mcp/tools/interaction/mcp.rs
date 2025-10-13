@@ -15,8 +15,14 @@ impl InteractionTool {
     pub async fn zhi(
         request: ZhiRequest,
     ) -> Result<CallToolResult, McpError> {
-        use crate::log_debug;
         use crate::log_important;
+
+        // 调试：将请求参数写入临时文件
+        let debug_file = std::env::temp_dir().join("cunzhi_zhi_request_debug.json");
+        if let Ok(json) = serde_json::to_string_pretty(&request) {
+            let _ = std::fs::write(&debug_file, json);
+            log_important!(info, "🔍 请求参数已写入: {:?}", debug_file);
+        }
 
         // 尝试获取会话 ID（工作目录）
         // 优先级：working_directory 参数 > CUNZHI_SESSION_ID > PWD > current_dir > 生成唯一ID
