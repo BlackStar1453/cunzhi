@@ -82,21 +82,46 @@ fn record_session_from_request(request_file: &str) {
     use crate::config::{load_standalone_config, save_standalone_config};
     use crate::mcp::types::PopupRequest;
 
+    log_important!(info, "开始记录会话，请求文件: {}", request_file);
+
     // 读取请求文件
-    if let Ok(request_json) = std::fs::read_to_string(request_file) {
-        if let Ok(request) = serde_json::from_str::<PopupRequest>(&request_json) {
-            // 如果请求中包含 session_id，记录会话
-            if let Some(session_id) = request.session_id {
-                if let Ok(mut app_config) = load_standalone_config() {
-                    app_config.telegram_config.record_session_request(&session_id);
-                    // 保存配置
-                    if let Err(e) = save_standalone_config(&app_config) {
-                        log_important!(warn, "保存会话记录失败: {}", e);
+    match std::fs::read_to_string(request_file) {
+        Ok(request_json) => {
+            log_important!(info, "成功读取请求文件");
+            match serde_json::from_str::<PopupRequest>(&request_json) {
+                Ok(request) => {
+                    log_important!(info, "成功解析请求，session_id: {:?}", request.session_id);
+                    // 如果请求中包含 session_id，记录会话
+                    if let Some(session_id) = request.session_id {
+                        match load_standalone_config() {
+                            Ok(mut app_config) => {
+                                log_important!(info, "成功加载配置，开始记录会话");
+                                app_config.telegram_config.record_session_request(&session_id);
+                                // 保存配置
+                                match save_standalone_config(&app_config) {
+                                    Ok(_) => {
+                                        log_important!(info, "✅ 已记录会话: {}", session_id);
+                                    }
+                                    Err(e) => {
+                                        log_important!(warn, "保存会话记录失败: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log_important!(warn, "加载配置失败: {}", e);
+                            }
+                        }
                     } else {
-                        log_important!(info, "已记录会话: {}", session_id);
+                        log_important!(warn, "请求中没有 session_id");
                     }
                 }
+                Err(e) => {
+                    log_important!(warn, "解析请求失败: {}", e);
+                }
             }
+        }
+        Err(e) => {
+            log_important!(warn, "读取请求文件失败: {}", e);
         }
     }
 }

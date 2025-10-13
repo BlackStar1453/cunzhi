@@ -92,6 +92,7 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
             // Telegram 命令
             get_telegram_config,
             set_telegram_config,
+            record_session,
             test_telegram_connection_cmd,
             auto_get_chat_id,
             start_telegram_sync,

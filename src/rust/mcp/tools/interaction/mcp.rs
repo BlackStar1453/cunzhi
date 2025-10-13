@@ -41,10 +41,17 @@ impl InteractionTool {
             });
 
         log_debug!("检测到的 session_id: {:?}", session_id);
+        log_important!(info, "🔍 working_directory 参数: {:?}", request.working_directory);
+        log_important!(info, "🔍 最终 session_id: {:?}", session_id);
+
         if let Some(ref sid) = session_id {
             if sid.starts_with("session_") {
                 log_important!(info, "使用生成的会话ID: {}", sid);
+            } else {
+                log_important!(info, "使用工作目录作为会话ID: {}", sid);
             }
+        } else {
+            log_important!(warn, "⚠️ 没有会话ID");
         }
 
         let popup_request = PopupRequest {
@@ -56,9 +63,11 @@ impl InteractionTool {
                 Some(request.predefined_options)
             },
             bot_name: None, // 使用默认 bot 或根据 session_id 映射
-            session_id,     // 传递会话 ID
+            session_id: session_id.clone(),     // 传递会话 ID
             is_markdown: request.is_markdown,
         };
+
+        log_important!(info, "📤 发送 PopupRequest，session_id: {:?}", popup_request.session_id);
 
         match create_tauri_popup(&popup_request) {
             Ok(response) => {

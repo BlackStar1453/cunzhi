@@ -41,6 +41,39 @@ pub async fn set_telegram_config(
     Ok(())
 }
 
+/// 记录会话请求
+#[tauri::command]
+pub async fn record_session(
+    session_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    log_important!(info, "📝 收到记录会话请求，session_id: {}", session_id);
+    log_important!(info, "📝 session_id 长度: {}", session_id.len());
+    log_important!(info, "📝 session_id 字节: {:?}", session_id.as_bytes());
+
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        log_important!(info, "📝 调用 record_session_request");
+        config.telegram_config.record_session_request(&session_id);
+
+        log_important!(info, "📝 当前 pending_sessions: {:?}", config.telegram_config.pending_sessions);
+    }
+
+    // 保存配置到文件
+    log_important!(info, "📝 开始保存配置");
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    log_important!(info, "✅ 会话已记录并保存: {}", session_id);
+    Ok(())
+}
+
 /// 测试Telegram Bot连接（使用默认 bot 的 API URL）
 #[tauri::command]
 pub async fn test_telegram_connection_cmd(
