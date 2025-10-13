@@ -63,6 +63,8 @@ const showPendingSessionsDialog = ref(false)
 const configuringSession = ref<PendingSession | null>(null)
 const showConfigureDialog = ref(false)
 const configureForm = ref({
+  useExistingBot: false, // 是否使用已有 Bot
+  selectedBotName: '', // 选中的已有 Bot 名称
   botName: '',
   botToken: '',
   chatId: '',
@@ -370,6 +372,8 @@ function startConfigureSession(session: PendingSession) {
   // 从会话 ID 提取目录名作为默认 bot 名称
   const pathParts = session.session_id.split('/')
   const dirName = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2]
+  configureForm.value.useExistingBot = false
+  configureForm.value.selectedBotName = ''
   configureForm.value.botName = `${dirName} Bot`
   configureForm.value.botToken = ''
   configureForm.value.chatId = ''
@@ -440,18 +444,46 @@ async function saveSessionConfiguration() {
   if (!configuringSession.value)
     return
 
-  if (!configureForm.value.botName.trim() || !configureForm.value.botToken.trim() || !configureForm.value.chatId.trim()) {
-    message.warning('请填写完整信息')
-    return
+  let botName: string
+  let botToken: string
+  let chatId: string
+  let apiBaseUrl: string | null
+
+  if (configureForm.value.useExistingBot) {
+    // 使用已有 Bot
+    if (!configureForm.value.selectedBotName) {
+      message.warning('请选择一个 Bot')
+      return
+    }
+    const selectedBot = telegramConfig.value.bots.find(b => b.name === configureForm.value.selectedBotName)
+    if (!selectedBot) {
+      message.error('选中的 Bot 不存在')
+      return
+    }
+    botName = selectedBot.name
+    botToken = selectedBot.bot_token
+    chatId = selectedBot.chat_id
+    apiBaseUrl = selectedBot.api_base_url || null
+  }
+  else {
+    // 创建新 Bot
+    if (!configureForm.value.botName.trim() || !configureForm.value.botToken.trim() || !configureForm.value.chatId.trim()) {
+      message.warning('请填写完整信息')
+      return
+    }
+    botName = configureForm.value.botName.trim()
+    botToken = configureForm.value.botToken.trim()
+    chatId = configureForm.value.chatId.trim()
+    apiBaseUrl = configureForm.value.apiBaseUrl === API_BASE_URL ? null : configureForm.value.apiBaseUrl
   }
 
   try {
     await invoke('configure_session_bot', {
       sessionId: configuringSession.value.session_id,
-      botName: configureForm.value.botName.trim(),
-      botToken: configureForm.value.botToken.trim(),
-      chatId: configureForm.value.chatId.trim(),
-      apiBaseUrl: configureForm.value.apiBaseUrl === API_BASE_URL ? null : configureForm.value.apiBaseUrl,
+      botName,
+      botToken,
+      chatId,
+      apiBaseUrl,
     })
 
     message.success('会话配置成功')
@@ -889,28 +921,54 @@ onMounted(() => {
         </div>
       </n-alert>
 
-      <!-- 创建 Bot 指引 -->
-      <n-alert type="success" title="📝 创建 Bot 步骤">
-        <div class="text-sm space-y-2">
-          <div class="flex items-center justify-between">
-            <div class="flex-1">
-              <p class="font-medium mb-1">1. 打开 Telegram，找到 @BotFather</p>
-              <p class="opacity-80">2. 发送 <code>/newbot</code> 命令</p>
-              <p class="opacity-80">3. 按提示设置 Bot 名称和用户名</p>
-              <p class="opacity-80">4. 复制获得的 Bot Token</p>
-            </div>
-            <n-button type="success" size="small" @click="openBotFather">
-              打开 BotFather
-            </n-button>
-          </div>
-        </div>
-      </n-alert>
+      <!-- 选择 Bot 方式 -->
+      <n-radio-group v-model:value="configureForm.useExistingBot">
+        <n-space>
+          <n-radio :value="false">创建新 Bot</n-radio>
+          <n-radio :value="true" :disabled="telegramConfig.bots.length === 0">
+            使用已有 Bot
+            <span v-if="telegramConfig.bots.length === 0" class="text-xs opacity-60">(暂无可用 Bot)</span>
+          </n-radio>
+        </n-space>
+      </n-radio-group>
 
-      <!-- Bot 配置表单 -->
-      <n-form label-placement="left" label-width="100">
-        <n-form-item label="Bot 名称">
-          <n-input v-model:value="configureForm.botName" placeholder="例如：项目A Bot" />
-        </n-form-item>
+      <!-- 使用已有 Bot -->
+      <div v-if="configureForm.useExistingBot">
+        <n-form label-placement="left" label-width="100">
+          <n-form-item label="选择 Bot">
+            <n-select
+              v-model:value="configureForm.selectedBotName"
+              :options="telegramConfig.bots.map(b => ({ label: b.name, value: b.name }))"
+              placeholder="请选择一个 Bot"
+            />
+          </n-form-item>
+        </n-form>
+      </div>
+
+      <!-- 创建新 Bot -->
+      <div v-else>
+        <!-- 创建 Bot 指引 -->
+        <n-alert type="success" title="📝 创建 Bot 步骤">
+          <div class="text-sm space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <p class="font-medium mb-1">1. 打开 Telegram，找到 @BotFather</p>
+                <p class="opacity-80">2. 发送 <code>/newbot</code> 命令</p>
+                <p class="opacity-80">3. 按提示设置 Bot 名称和用户名</p>
+                <p class="opacity-80">4. 复制获得的 Bot Token</p>
+              </div>
+              <n-button type="success" size="small" @click="openBotFather">
+                打开 BotFather
+              </n-button>
+            </div>
+          </div>
+        </n-alert>
+
+        <!-- Bot 配置表单 -->
+        <n-form label-placement="left" label-width="100">
+          <n-form-item label="Bot 名称">
+            <n-input v-model:value="configureForm.botName" placeholder="例如：项目A Bot" />
+          </n-form-item>
 
         <n-form-item label="Bot Token">
           <n-input-group>
@@ -939,10 +997,11 @@ onMounted(() => {
           </template>
         </n-form-item>
 
-        <n-form-item label="API 基础 URL">
-          <n-input v-model:value="configureForm.apiBaseUrl" placeholder="默认使用官方 API" />
-        </n-form-item>
-      </n-form>
+          <n-form-item label="API 基础 URL">
+            <n-input v-model:value="configureForm.apiBaseUrl" placeholder="默认使用官方 API" />
+          </n-form-item>
+        </n-form>
+      </div>
     </n-space>
 
     <template #footer>
