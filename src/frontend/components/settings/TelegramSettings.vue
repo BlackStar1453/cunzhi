@@ -937,28 +937,33 @@ onMounted(() => {
         <n-alert v-if="telegramConfig.bots.length === 0" type="warning">
           暂无可用的 Bot，请先在"Bot 管理"中添加 Bot
         </n-alert>
-        <n-form v-else label-placement="left" label-width="100">
-          <n-form-item label="选择 Bot">
-            <n-select
-              v-model:value="configureForm.selectedBotName"
-              :options="telegramConfig.bots.map(b => ({ label: b.name, value: b.name }))"
-              placeholder="请选择一个 Bot"
-              clearable
-            />
-          </n-form-item>
+        <div v-else>
+          <div class="text-sm font-medium mb-3">选择 Bot</div>
+          <n-radio-group v-model:value="configureForm.selectedBotName">
+            <n-space vertical>
+              <n-radio
+                v-for="bot in telegramConfig.bots"
+                :key="bot.name"
+                :value="bot.name"
+              >
+                <div class="flex items-center">
+                  <span class="font-medium">{{ bot.name }}</span>
+                  <span v-if="bot.is_default" class="ml-2 text-xs opacity-60">(默认)</span>
+                </div>
+              </n-radio>
+            </n-space>
+          </n-radio-group>
 
           <!-- 显示选中的 Bot 信息 -->
-          <template v-if="configureForm.selectedBotName">
-            <n-alert type="info" class="mt-2">
-              <div class="text-sm">
-                <div class="font-medium mb-1">已选择 Bot: {{ configureForm.selectedBotName }}</div>
-                <div class="opacity-80 text-xs">
-                  该会话的消息将发送到此 Bot
-                </div>
+          <n-alert v-if="configureForm.selectedBotName" type="info" class="mt-3">
+            <div class="text-sm">
+              <div class="font-medium mb-1">已选择 Bot: {{ configureForm.selectedBotName }}</div>
+              <div class="opacity-80 text-xs">
+                该会话的消息将发送到此 Bot
               </div>
-            </n-alert>
-          </template>
-        </n-form>
+            </div>
+          </n-alert>
+        </div>
       </template>
 
       <!-- 创建新 Bot -->
