@@ -220,10 +220,14 @@ pub async fn start_telegram_sync(
     predefined_options: Vec<String>,
     is_markdown: bool,
     bot_name: Option<String>, // 可选的 bot 名称
-    session_id: Option<String>, // 新增：可选的 session_id
+    session_id: Option<String>, // 可选的 session_id
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
+    log_important!(info, "🔍 start_telegram_sync 参数:");
+    log_important!(info, "  - bot_name: {:?}", bot_name);
+    log_important!(info, "  - session_id: {:?}", session_id);
+
     // 获取Telegram配置和指定的 bot
     let (enabled, bot_config, continue_reply_enabled) = {
         let config = state
@@ -239,16 +243,21 @@ pub async fn start_telegram_sync(
         // 优先级：bot_name > session_id 映射 > 默认 bot
         let bot = if let Some(name) = &bot_name {
             // 1. 如果明确指定了 bot_name，使用指定的 bot
+            log_important!(info, "  ✅ 使用指定的 Bot: {}", name);
             config.telegram_config.get_bot(name)
                 .ok_or_else(|| format!("Bot '{}' 不存在", name))?
         } else if let Some(sid) = &session_id {
             // 2. 如果提供了 session_id，尝试从映射中获取对应的 bot
-            config.telegram_config.get_bot_for_session(Some(sid))
-                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?
+            let bot = config.telegram_config.get_bot_for_session(Some(sid))
+                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?;
+            log_important!(info, "  ✅ 根据 session_id 选择 Bot: {}", bot.name);
+            bot
         } else {
             // 3. 否则使用默认 bot
-            config.telegram_config.get_default_bot()
-                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?
+            let bot = config.telegram_config.get_default_bot()
+                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?;
+            log_important!(info, "  ✅ 使用默认 Bot: {}", bot.name);
+            bot
         };
 
         (
