@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::HashSet;
 use teloxide::prelude::*;
 
-use crate::config::load_standalone_config;
+use crate::config::{load_standalone_config, save_standalone_config};
 use crate::mcp::types::{build_continue_response, build_send_response, PopupRequest};
 use crate::telegram::{handle_callback_query, handle_text_message, TelegramCore, TelegramEvent};
 use crate::log_important;
@@ -14,7 +14,17 @@ pub async fn handle_telegram_only_mcp_request(request_file: &str) -> Result<()> 
     let request: PopupRequest = serde_json::from_str(&request_json)?;
 
     // 加载完整配置
-    let app_config = load_standalone_config()?;
+    let mut app_config = load_standalone_config()?;
+
+    // 记录会话请求（如果有 session_id）
+    if let Some(session_id) = &request.session_id {
+        app_config.telegram_config.record_session_request(session_id);
+        // 保存配置以记录待配置会话
+        if let Err(e) = save_standalone_config(&app_config) {
+            log_important!(warn, "保存会话记录失败: {}", e);
+        }
+    }
+
     let telegram_config = &app_config.telegram_config;
 
     if !telegram_config.enabled {
@@ -22,21 +32,32 @@ pub async fn handle_telegram_only_mcp_request(request_file: &str) -> Result<()> 
         return Ok(());
     }
 
-    if telegram_config.bot_token.trim().is_empty() || telegram_config.chat_id.trim().is_empty() {
-        log_important!(warn, "Telegram配置不完整");
-        return Ok(());
-    }
+    // 获取要使用的 bot 配置
+    // 优先级：bot_name > session_id 映射 > 默认 bot
+    let bot_config = if let Some(bot_name) = &request.bot_name {
+        // 1. 如果明确指定了 bot_name，使用指定的 bot
+        telegram_config.get_bot(bot_name)
+            .ok_or_else(|| anyhow::anyhow!("Bot '{}' 不存在", bot_name))?
+    } else if let Some(session_id) = &request.session_id {
+        // 2. 如果提供了 session_id，尝试从映射中获取对应的 bot
+        telegram_config.get_bot_for_session(Some(session_id))
+            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?
+    } else {
+        // 3. 否则使用默认 bot
+        telegram_config.get_default_bot()
+            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?
+    };
 
     // 创建Telegram核心实例，使用配置中的API URL
-    let api_url = if telegram_config.api_base_url == crate::constants::telegram::API_BASE_URL {
+    let api_url = if bot_config.api_base_url == crate::constants::telegram::API_BASE_URL {
         None
     } else {
-        Some(telegram_config.api_base_url.clone())
+        Some(bot_config.api_base_url.clone())
     };
 
     let core = TelegramCore::new_with_api_url(
-        telegram_config.bot_token.clone(),
-        telegram_config.chat_id.clone(),
+        bot_config.bot_token.clone(),
+        bot_config.chat_id.clone(),
         api_url,
     )?;
 

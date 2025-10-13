@@ -95,6 +95,16 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
             test_telegram_connection_cmd,
             auto_get_chat_id,
             start_telegram_sync,
+            add_telegram_bot,
+            remove_telegram_bot,
+            update_telegram_bot,
+            set_default_telegram_bot,
+            set_session_bot_mapping,
+            remove_session_bot_mapping,
+            get_session_bot_mappings,
+            get_pending_sessions,
+            configure_session_bot,
+            ignore_pending_session,
 
             // 系统命令
             open_external_url,

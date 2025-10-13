@@ -16,8 +16,14 @@ pub fn handle_cli_args() -> Result<()> {
         // 单参数：帮助或版本
         2 => {
             match args[1].as_str() {
-                "--help" | "-h" => print_help(),
-                "--version" | "-v" => print_version(),
+                "--help" | "-h" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                "--version" | "-v" => {
+                    print_version();
+                    std::process::exit(0);
+                }
                 _ => {
                     eprintln!("未知参数: {}", args[1]);
                     print_help();
@@ -42,6 +48,9 @@ pub fn handle_cli_args() -> Result<()> {
 
 /// 处理MCP请求
 fn handle_mcp_request(request_file: &str) -> Result<()> {
+    // 先记录会话信息（无论是哪种模式）
+    record_session_from_request(request_file);
+
     // 检查Telegram配置，决定是否启用纯Telegram模式
     match load_standalone_telegram_config() {
         Ok(telegram_config) => {
@@ -68,8 +77,33 @@ fn handle_mcp_request(request_file: &str) -> Result<()> {
     Ok(())
 }
 
+/// 从请求文件中记录会话信息
+fn record_session_from_request(request_file: &str) {
+    use crate::config::{load_standalone_config, save_standalone_config};
+    use crate::mcp::types::PopupRequest;
+
+    // 读取请求文件
+    if let Ok(request_json) = std::fs::read_to_string(request_file) {
+        if let Ok(request) = serde_json::from_str::<PopupRequest>(&request_json) {
+            // 如果请求中包含 session_id，记录会话
+            if let Some(session_id) = request.session_id {
+                if let Ok(mut app_config) = load_standalone_config() {
+                    app_config.telegram_config.record_session_request(&session_id);
+                    // 保存配置
+                    if let Err(e) = save_standalone_config(&app_config) {
+                        log_important!(warn, "保存会话记录失败: {}", e);
+                    } else {
+                        log_important!(info, "已记录会话: {}", session_id);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 显示帮助信息
 fn print_help() {
+    use std::io::{self, Write};
     println!("寸止 - 智能代码审查工具");
     println!();
     println!("用法:");
@@ -77,9 +111,12 @@ fn print_help() {
     println!("  等一下 --mcp-request <文件>  处理 MCP 请求");
     println!("  等一下 --help             显示此帮助信息");
     println!("  等一下 --version          显示版本信息");
+    let _ = io::stdout().flush();
 }
 
 /// 显示版本信息
 fn print_version() {
+    use std::io::{self, Write};
     println!("寸止 v{}", env!("CARGO_PKG_VERSION"));
+    let _ = io::stdout().flush();
 }

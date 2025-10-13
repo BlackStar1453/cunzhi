@@ -15,6 +15,22 @@ impl InteractionTool {
     pub async fn zhi(
         request: ZhiRequest,
     ) -> Result<CallToolResult, McpError> {
+        use crate::log_debug;
+
+        // 尝试获取会话 ID（工作目录）
+        // 优先级：working_directory 参数 > CUNZHI_SESSION_ID > PWD > current_dir
+        let session_id = request.working_directory
+            .clone()
+            .or_else(|| std::env::var("CUNZHI_SESSION_ID").ok())
+            .or_else(|| std::env::var("PWD").ok())
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .and_then(|path| path.to_str().map(|s| s.to_string()))
+            });
+
+        log_debug!("检测到的 session_id: {:?}", session_id);
+
         let popup_request = PopupRequest {
             id: generate_request_id(),
             message: request.message,
@@ -23,6 +39,8 @@ impl InteractionTool {
             } else {
                 Some(request.predefined_options)
             },
+            bot_name: None, // 使用默认 bot 或根据 session_id 映射
+            session_id,     // 传递会话 ID
             is_markdown: request.is_markdown,
         };
 

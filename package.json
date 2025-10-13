@@ -1,7 +1,7 @@
 {
   "name": "cunzhi",
   "type": "module",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "lint": "eslint . --fix",
     "tauri": "cargo tauri",
     "tauri:dev": "cargo tauri dev",
-    "tauri:build": "cargo tauri build",
+    "tauri:build": "cargo tauri build && ./scripts/post-build.sh",
+    "tauri:build:install": "cargo tauri build && ./scripts/post-build.sh --install",
     "test:ui": "cd src/frontend/test && vite",
     "test:ui:build": "cd src/frontend/test && vite build"
   },

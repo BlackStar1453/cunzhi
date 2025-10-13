@@ -11,6 +11,9 @@ pub struct ZhiRequest {
     #[schemars(description = "消息是否为Markdown格式，默认为true")]
     #[serde(default = "default_is_markdown")]
     pub is_markdown: bool,
+    #[schemars(description = "当前工作目录（可选），用于会话识别")]
+    #[serde(default)]
+    pub working_directory: Option<String>,
 }
 
 fn default_is_markdown() -> bool {
@@ -43,6 +46,10 @@ pub struct PopupRequest {
     pub message: String,
     pub predefined_options: Option<Vec<String>>,
     pub is_markdown: bool,
+    #[serde(default)]
+    pub bot_name: Option<String>, // 可选的 Telegram Bot 名称
+    #[serde(default)]
+    pub session_id: Option<String>, // 可选的会话 ID，用于自动选择 bot
 }
 
 /// 新的结构化响应数据格式

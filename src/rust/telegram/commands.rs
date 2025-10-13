@@ -1,9 +1,10 @@
-use crate::config::{save_config, AppState, TelegramConfig};
+use crate::config::{save_config, AppState, TelegramConfig, TelegramBotConfig, PendingSession};
 use crate::constants::telegram as telegram_constants;
 use crate::telegram::{
     handle_callback_query, handle_text_message, TelegramCore,
 };
 use crate::log_important;
+use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, Manager, State};
 use teloxide::prelude::*;
 
@@ -40,30 +41,34 @@ pub async fn set_telegram_config(
     Ok(())
 }
 
-/// 测试Telegram Bot连接
+/// 测试Telegram Bot连接（使用默认 bot 的 API URL）
 #[tauri::command]
 pub async fn test_telegram_connection_cmd(
     bot_token: String,
     chat_id: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // 获取API URL配置
+    // 获取默认 bot 的 API URL 配置
     let api_url = {
         let config = state
             .config
             .lock()
             .map_err(|e| format!("获取配置失败: {}", e))?;
-        config.telegram_config.api_base_url.clone()
+
+        // 尝试从默认 bot 获取 API URL，如果没有则使用默认值
+        config.telegram_config.get_default_bot()
+            .map(|bot| bot.api_base_url.clone())
+            .unwrap_or_else(|| telegram_constants::API_BASE_URL.to_string())
     };
 
     // 使用默认API URL时传递None，否则传递自定义URL
     let api_url_option = if api_url == telegram_constants::API_BASE_URL {
         None
     } else {
-        Some(api_url.as_str())
+        Some(api_url)
     };
 
-    crate::telegram::core::test_telegram_connection_with_api_url(&bot_token, &chat_id, api_url_option)
+    crate::telegram::core::test_telegram_connection_with_api_url(&bot_token, &chat_id, api_url_option.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -76,13 +81,16 @@ pub async fn auto_get_chat_id(
 ) -> Result<(), String> {
     // 获取API URL配置
     let mut bot = Bot::new(bot_token.clone());
-    
+
     if let Some(state) = app_handle.try_state::<AppState>() {
         if let Ok(config) = state.config.lock() {
-            let api_url = &config.telegram_config.api_base_url;
-            if api_url != telegram_constants::API_BASE_URL {
-                if let Ok(url) = reqwest::Url::parse(api_url) {
-                    bot = bot.set_api_url(url);
+            // 尝试从默认 bot 获取 API URL
+            if let Some(default_bot) = config.telegram_config.get_default_bot() {
+                let api_url = &default_bot.api_base_url;
+                if api_url != telegram_constants::API_BASE_URL {
+                    if let Ok(url) = reqwest::Url::parse(api_url) {
+                        bot = bot.set_api_url(url);
+                    }
                 }
             }
         }
@@ -178,19 +186,33 @@ pub async fn start_telegram_sync(
     message: String,
     predefined_options: Vec<String>,
     is_markdown: bool,
+    bot_name: Option<String>, // 新增：可选的 bot 名称
     state: State<'_, AppState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    // 获取Telegram配置
-    let (enabled, bot_token, chat_id, continue_reply_enabled) = {
+    // 获取Telegram配置和指定的 bot
+    let (enabled, bot_config, continue_reply_enabled) = {
         let config = state
             .config
             .lock()
             .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        if !config.telegram_config.enabled {
+            return Ok(());
+        }
+
+        // 根据 bot_name 获取对应的 bot 配置
+        let bot = if let Some(name) = &bot_name {
+            config.telegram_config.get_bot(name)
+                .ok_or_else(|| format!("Bot '{}' 不存在", name))?
+        } else {
+            config.telegram_config.get_default_bot()
+                .ok_or_else(|| "没有可用的 Bot 配置".to_string())?
+        };
+
         (
             config.telegram_config.enabled,
-            config.telegram_config.bot_token.clone(),
-            config.telegram_config.chat_id.clone(),
+            bot.clone(),
             config.reply_config.enable_continue_reply,
         )
     };
@@ -199,29 +221,19 @@ pub async fn start_telegram_sync(
         return Ok(());
     }
 
-    if bot_token.trim().is_empty() || chat_id.trim().is_empty() {
-        return Err("Telegram配置不完整".to_string());
-    }
-
-    // 获取API URL配置
-    let api_url = {
-        let config = state
-            .config
-            .lock()
-            .map_err(|e| format!("获取配置失败: {}", e))?;
-        config.telegram_config.api_base_url.clone()
-    };
-
     // 使用默认API URL时传递None，否则传递自定义URL
-    let api_url_option = if api_url == telegram_constants::API_BASE_URL {
+    let api_url_option = if bot_config.api_base_url == telegram_constants::API_BASE_URL {
         None
     } else {
-        Some(api_url)
+        Some(bot_config.api_base_url.clone())
     };
 
     // 创建Telegram核心实例
-    let core = TelegramCore::new_with_api_url(bot_token.clone(), chat_id.clone(), api_url_option)
-        .map_err(|e| format!("创建Telegram核心失败: {}", e))?;
+    let core = TelegramCore::new_with_api_url(
+        bot_config.bot_token.clone(),
+        bot_config.chat_id.clone(),
+        api_url_option
+    ).map_err(|e| format!("创建Telegram核心失败: {}", e))?;
 
     // 发送选项消息
     core.send_options_message(&message, &predefined_options, is_markdown)
@@ -237,8 +249,8 @@ pub async fn start_telegram_sync(
         .map_err(|e| format!("发送操作消息失败: {}", e))?;
 
     // 启动消息监听（根据是否有预定义选项选择监听模式）
-    let bot_token_clone = bot_token.clone();
-    let chat_id_clone = chat_id.clone();
+    let bot_token_clone = bot_config.bot_token.clone();
+    let chat_id_clone = bot_config.chat_id.clone();
     let app_handle_clone = app_handle.clone();
 
     tokio::spawn(async move {
@@ -273,11 +285,17 @@ async fn start_telegram_listener(
                 .config
                 .lock()
                 .map_err(|e| format!("获取配置失败: {}", e))?;
-            let api_url = config.telegram_config.api_base_url.clone();
-                         if api_url == telegram_constants::API_BASE_URL {
-                None
+
+            // 尝试从默认 bot 获取 API URL
+            if let Some(default_bot) = config.telegram_config.get_default_bot() {
+                let api_url = default_bot.api_base_url.clone();
+                if api_url == telegram_constants::API_BASE_URL {
+                    None
+                } else {
+                    Some(api_url)
+                }
             } else {
-                Some(api_url)
+                None
             }
         }
         None => None, // 如果无法获取状态，使用默认API
@@ -444,4 +462,270 @@ async fn start_telegram_listener(
         // 短暂延迟避免过于频繁的请求
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
+}
+
+
+/// 添加 Telegram Bot 配置
+#[tauri::command]
+pub async fn add_telegram_bot(
+    bot: TelegramBotConfig,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 检查是否已存在同名 bot
+        if config.telegram_config.get_bot(&bot.name).is_some() {
+            return Err(format!("Bot '{}' 已存在", bot.name));
+        }
+
+        config.telegram_config.add_bot(bot);
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 删除 Telegram Bot 配置
+#[tauri::command]
+pub async fn remove_telegram_bot(
+    bot_name: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        if !config.telegram_config.remove_bot(&bot_name) {
+            return Err(format!("Bot '{}' 不存在", bot_name));
+        }
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 更新 Telegram Bot 配置
+#[tauri::command]
+pub async fn update_telegram_bot(
+    old_name: String,
+    bot: TelegramBotConfig,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 先删除旧的
+        if !config.telegram_config.remove_bot(&old_name) {
+            return Err(format!("Bot '{}' 不存在", old_name));
+        }
+
+        // 再添加新的
+        config.telegram_config.add_bot(bot);
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 设置默认 Telegram Bot
+#[tauri::command]
+pub async fn set_default_telegram_bot(
+    bot_name: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 检查 bot 是否存在
+        if config.telegram_config.get_bot(&bot_name).is_none() {
+            return Err(format!("Bot '{}' 不存在", bot_name));
+        }
+
+        config.telegram_config.default_bot = bot_name;
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 设置会话到 Bot 的映射
+#[tauri::command]
+pub async fn set_session_bot_mapping(
+    session_id: String,
+    bot_name: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 检查 bot 是否存在
+        if config.telegram_config.get_bot(&bot_name).is_none() {
+            return Err(format!("Bot '{}' 不存在", bot_name));
+        }
+
+        config.telegram_config.set_session_bot_mapping(session_id, bot_name);
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 删除会话到 Bot 的映射
+#[tauri::command]
+pub async fn remove_session_bot_mapping(
+    session_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        if !config.telegram_config.remove_session_bot_mapping(&session_id) {
+            return Err(format!("会话 '{}' 没有映射", session_id));
+        }
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 获取所有会话到 Bot 的映射
+#[tauri::command]
+pub async fn get_session_bot_mappings(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, String>, String> {
+    let config = state
+        .config
+        .lock()
+        .map_err(|e| format!("获取配置失败: {}", e))?;
+
+    Ok(config.telegram_config.session_bot_mapping.clone())
+}
+
+/// 获取待配置的会话列表
+#[tauri::command]
+pub async fn get_pending_sessions(
+    state: State<'_, AppState>,
+) -> Result<Vec<PendingSession>, String> {
+    let config = state
+        .config
+        .lock()
+        .map_err(|e| format!("获取配置失败: {}", e))?;
+
+    Ok(config.telegram_config.pending_sessions.clone())
+}
+
+/// 为待配置会话快速创建 Bot 并设置映射
+#[tauri::command]
+pub async fn configure_session_bot(
+    session_id: String,
+    bot_name: String,
+    bot_token: String,
+    chat_id: String,
+    api_base_url: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 创建新的 bot 配置
+        let bot_config = TelegramBotConfig {
+            name: bot_name.clone(),
+            bot_token,
+            chat_id,
+            api_base_url: api_base_url.unwrap_or_else(|| telegram_constants::API_BASE_URL.to_string()),
+        };
+
+        // 添加 bot
+        config.telegram_config.add_bot(bot_config);
+
+        // 设置会话映射
+        config.telegram_config.set_session_bot_mapping(session_id.clone(), bot_name);
+
+        // 移除待配置会话
+        config.telegram_config.remove_pending_session(&session_id);
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
+}
+
+/// 忽略待配置会话（使用默认 bot）
+#[tauri::command]
+pub async fn ignore_pending_session(
+    session_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    {
+        let mut config = state
+            .config
+            .lock()
+            .map_err(|e| format!("获取配置失败: {}", e))?;
+
+        // 移除待配置会话
+        config.telegram_config.remove_pending_session(&session_id);
+    }
+
+    // 保存配置到文件
+    save_config(&state, &app)
+        .await
+        .map_err(|e| format!("保存配置失败: {}", e))?;
+
+    Ok(())
 }
