@@ -943,6 +943,14 @@ onMounted(() => {
             />
           </n-form-item>
         </n-form>
+
+        <!-- 调试信息 -->
+        <n-alert v-if="telegramConfig.bots.length === 0" type="warning" class="mt-2">
+          暂无可用的 Bot，请先在"Bot 管理"中添加 Bot
+        </n-alert>
+        <div v-else class="text-xs opacity-60 mt-2">
+          可用 Bot: {{ telegramConfig.bots.map(b => b.name).join(', ') }}
+        </div>
       </div>
 
       <!-- 创建新 Bot -->
