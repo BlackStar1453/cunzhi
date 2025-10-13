@@ -34,18 +34,29 @@ pub async fn handle_telegram_only_mcp_request(request_file: &str) -> Result<()> 
 
     // 获取要使用的 bot 配置
     // 优先级：bot_name > session_id 映射 > 默认 bot
+    log_important!(info, "🔍 Bot 选择逻辑:");
+    log_important!(info, "  - bot_name: {:?}", request.bot_name);
+    log_important!(info, "  - session_id: {:?}", request.session_id);
+    log_important!(info, "  - session_bot_mapping: {:?}", telegram_config.session_bot_mapping);
+    log_important!(info, "  - default_bot: {}", telegram_config.default_bot);
+
     let bot_config = if let Some(bot_name) = &request.bot_name {
         // 1. 如果明确指定了 bot_name，使用指定的 bot
+        log_important!(info, "  ✅ 使用指定的 Bot: {}", bot_name);
         telegram_config.get_bot(bot_name)
             .ok_or_else(|| anyhow::anyhow!("Bot '{}' 不存在", bot_name))?
     } else if let Some(session_id) = &request.session_id {
         // 2. 如果提供了 session_id，尝试从映射中获取对应的 bot
-        telegram_config.get_bot_for_session(Some(session_id))
-            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?
+        let bot = telegram_config.get_bot_for_session(Some(session_id))
+            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?;
+        log_important!(info, "  ✅ 根据 session_id 选择 Bot: {}", bot.name);
+        bot
     } else {
         // 3. 否则使用默认 bot
-        telegram_config.get_default_bot()
-            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?
+        let bot = telegram_config.get_default_bot()
+            .ok_or_else(|| anyhow::anyhow!("没有可用的 Bot 配置"))?;
+        log_important!(info, "  ✅ 使用默认 Bot: {}", bot.name);
+        bot
     };
 
     // 创建Telegram核心实例，使用配置中的API URL
