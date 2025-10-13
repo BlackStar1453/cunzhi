@@ -478,13 +478,23 @@ async function saveSessionConfiguration() {
   }
 
   try {
-    await invoke('configure_session_bot', {
-      sessionId: configuringSession.value.session_id,
-      botName,
-      botToken,
-      chatId,
-      apiBaseUrl,
-    })
+    if (configureForm.value.useExistingBot) {
+      // 使用已有 Bot：只设置映射
+      await invoke('set_session_bot_mapping', {
+        sessionId: configuringSession.value.session_id,
+        botName,
+      })
+    }
+    else {
+      // 创建新 Bot：创建 Bot 并设置映射
+      await invoke('configure_session_bot', {
+        sessionId: configuringSession.value.session_id,
+        botName,
+        botToken,
+        chatId,
+        apiBaseUrl,
+      })
+    }
 
     message.success('会话配置成功')
     showConfigureDialog.value = false

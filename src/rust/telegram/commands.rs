@@ -632,7 +632,10 @@ pub async fn set_session_bot_mapping(
             return Err(format!("Bot '{}' 不存在", bot_name));
         }
 
-        config.telegram_config.set_session_bot_mapping(session_id, bot_name);
+        config.telegram_config.set_session_bot_mapping(session_id.clone(), bot_name);
+
+        // 移除待配置会话（如果存在）
+        config.telegram_config.remove_pending_session(&session_id);
     }
 
     // 保存配置到文件
