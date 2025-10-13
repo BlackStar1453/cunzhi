@@ -44,6 +44,10 @@ impl InteractionTool {
                     .as_secs();
                 let random_suffix = std::process::id(); // 使用进程ID作为随机后缀
                 Some(format!("session_{}_pid_{}", timestamp, random_suffix))
+            })
+            .map(|s| {
+                // 标准化路径：移除末尾斜杠
+                s.trim_end_matches('/').to_string()
             });
 
         // 调试信息

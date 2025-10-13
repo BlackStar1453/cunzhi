@@ -59,6 +59,20 @@ pub async fn handle_telegram_only_mcp_request(request_file: &str) -> Result<()> 
         bot
     };
 
+    // 写入调试信息到临时文件
+    let debug_info = format!(
+        "Bot Selection Debug:\n\
+         - bot_name: {:?}\n\
+         - session_id: {:?}\n\
+         - session_bot_mapping: {:?}\n\
+         - selected_bot: {}\n",
+        request.bot_name,
+        request.session_id,
+        telegram_config.session_bot_mapping,
+        bot_config.name
+    );
+    let _ = std::fs::write("/tmp/cunzhi_bot_selection_debug.txt", debug_info);
+
     // 创建Telegram核心实例，使用配置中的API URL
     let api_url = if bot_config.api_base_url == crate::constants::telegram::API_BASE_URL {
         None
