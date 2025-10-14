@@ -562,7 +562,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <n-switch :value="telegramConfig.enabled" size="small" @update:value="toggleTelegramEnabled" />
+        <n-switch v-model:value="telegramConfig.enabled" size="small" @update:value="toggleTelegramEnabled" />
       </div>
     </div>
 
