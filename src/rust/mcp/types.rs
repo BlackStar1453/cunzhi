@@ -11,7 +11,7 @@ pub struct ZhiRequest {
     #[schemars(description = "消息是否为Markdown格式，默认为true")]
     #[serde(default = "default_is_markdown")]
     pub is_markdown: bool,
-    #[schemars(description = "当前工作目录（强烈建议传递），用于会话识别和多Bot路由。AI应该传递当前会话的工作目录路径，例如：/Users/username/project-name。如果不传递，系统将无法正确识别会话并路由到对应的Telegram Bot。")]
+    #[schemars(description = "当前工作目录（强烈建议传递），用于会话识别和多Bot路由。格式：path:branch（例如：/Users/username/project:main）或 path（非Git仓库）。AI应该先获取当前Git分支（使用 git branch --show-current），然后构建 'path:branch' 格式的working_directory。如果不是Git仓库或无法获取分支，则只传递路径。这样可以确保同一目录的不同分支使用不同的Bot。")]
     #[serde(default)]
     pub working_directory: Option<String>,
 }
